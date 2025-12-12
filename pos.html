@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>POS Cash Register Simulator (Offline)</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    body { margin: 0; background:#0b0c10; color:#e6e6e6; }
+    header { padding: 14px 16px; border-bottom: 1px solid #222; display:flex; gap:10px; align-items:center; }
+    header h1 { font-size: 16px; margin: 0; font-weight: 650; }
+    .wrap { display:grid; grid-template-columns: 1.2fr 1fr; gap: 12px; padding: 12px; }
+    @media (max-width: 980px){ .wrap{ grid-template-columns: 1fr; } }
+    .card { background:#121318; border:1px solid #24262d; border-radius: 14px; overflow:hidden; }
+    .card h2 { margin:0; padding: 10px 12px; font-size: 14px; border-bottom:1px solid #24262d; background:#0f1015; }
+    .pad { padding: 12px; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    label { font-size: 12px; color:#b9bcc7; }
+    input, select, button, textarea {
+      border-radius: 12px; border:1px solid #2a2d36; background:#0d0f14; color:#e6e6e6;
+      padding: 10px 12px; font-size: 14px;
+    }
+    input[type="number"]{ width: 140px; }
+    input[type="text"]{ width: min(520px, 100%); }
+    button { cursor:pointer; background:#161925; }
+    button:hover{ background:#1b2030; }
+    button.primary{ background:#1e3a8a; border-color:#2b4bb6; }
+    button.primary:hover{ background:#2746a8; }
+    button.danger{ background:#3b0a0a; border-color:#5a1212; }
+    button.danger:hover{ background:#4b0e0e; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid #24262d; font-size: 13px; }
+    th { text-align:left; color:#b9bcc7; font-weight: 600; }
+    td.num { text-align:right; font-variant-numeric: tabular-nums; }
+    .muted { color:#a9acb7; font-size: 12px; }
+    .totals { display:grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px 12px; border-top:1px solid #24262d; background:#0f1015; }
+    .totals div { font-size: 13px; }
+    .totals .big { font-size: 18px; font-weight: 750; }
+    .pill { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border:1px solid #2a2d36; border-radius:999px; background:#0d0f14; }
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 520px){ .grid2{ grid-template-columns: 1fr; } }
+    textarea { width:100%; min-height: 220px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .kbd { border:1px solid #2a2d36; background:#0d0f14; border-radius:10px; padding: 6px 10px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>🧾 POS Cash Register Simulator</h1>
+  <span class="muted">Offline • Single-file • Android-ready</span>
+</header>
+
+<div class="wrap">
+
+  <!-- Left: Scan/Add + Cart -->
+  <section class="card">
+    <h2>Scan / Add Item</h2>
+    <div class="pad">
+      <div class="row">
+        <div>
+          <label>Barcode / PLU</label><br/>
+          <input id="barcode" type="text" inputmode="numeric" placeholder="e.g. 012345678905" />
+          <div class="muted">Tip: a real barcode scanner usually types the code + Enter.</div>
+        </div>
+        <div>
+          <label>Qty</label><br/>
+          <input id="qty" type="number" min="1" step="1" value="1" />
+        </div>
+        <div style="align-self:flex-end">
+          <button class="primary" id="btnAdd">Add</button>
+        </div>
+      </div>
+
+      <hr style="border:0;border-top:1px solid #24262d; margin:12px 0" />
+
+      <div class="row">
+        <span class="pill">
+          <input id="taxEnabled" type="checkbox" checked />
+          <label for="taxEnabled" style="margin:0">Tax enabled</label>
+        </span>
+
+        <span class="pill">
+          <label for="taxRate" style="margin:0">Tax rate</label>
+          <select id="taxRate">
+            <option value="0.05">5% (GST)</option>
+            <option value="0.09975">9.975% (QC QST)</option>
+            <option value="0.14975" selected>14.975% (QC GST+QST)</option>
+            <option value="0.13">13% (HST)</option>
+            <option value="0.15">15% (HST)</option>
+            <option value="0">0%</option>
+          </select>
+        </span>
+
+        <span class="pill">
+          <label for="priceMode" style="margin:0">Unknown barcode</label>
+          <select id="priceMode">
+            <option value="prompt" selected>Prompt for name & price</option>
+            <option value="reject">Reject</option>
+          </select>
+        </span>
+      </div>
+
+      <hr style="border:0;border-top:1px solid #24262d; margin:12px 0" />
+
+      <div class="row" style="justify-content:space-between; align-items:flex-end">
+        <div>
+          <div class="muted">Cart</div>
+          <div class="muted">Tap a line to edit qty/price or remove.</div>
+        </div>
+        <div class="row">
+          <button id="btnVoid" class="danger">Void Sale</button>
+          <button id="btnSaveDb">Save Items DB</button>
+        </div>
+      </div>
+
+      <div style="overflow:auto; border:1px solid #24262d; border-radius: 12px; margin-top:10px;">
+        <table id="cartTable">
+          <thead>
+            <tr>
+              <th style="min-width:180px;">Item</th>
+              <th>Code</th>
+              <th class="num">Qty</th>
+              <th class="num">Price</th>
+              <th class="num">Line</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="totals">
+      <div>Subtotal</div><div class="num" id="subtotal">$0.00</div>
+      <div>Tax</div><div class="num" id="tax">$0.00</div>
+      <div class="big">Total</div><div class="num big" id="total">$0.00</div>
+    </div>
+  </section>
+
+  <!-- Right: Tender + Receipt + DB editor -->
+  <section class="card">
+    <h2>Payment / Receipt</h2>
+    <div class="pad grid2">
+      <div>
+        <label>Tendered (cash)</label><br/>
+        <input id="tendered" type="number" min="0" step="0.01" placeholder="e.g. 20.00" />
+        <div class="row" style="margin-top:8px;">
+          <button id="btnPay" class="primary">Pay</button>
+          <button id="btnPrint">Copy Receipt</button>
+        </div>
+        <div style="margin-top:10px;">
+          <div class="muted">Change due</div>
+          <div style="font-size:22px; font-weight:800;" id="change">$0.00</div>
+        </div>
+
+        <hr style="border:0;border-top:1px solid #24262d; margin:12px 0" />
+
+        <div class="muted">Quick keys</div>
+        <div class="row" style="margin-top:6px;">
+          <span class="kbd">Enter</span><span class="muted">Add item</span>
+          <span class="kbd">Ctrl</span>+<span class="kbd">K</span><span class="muted">Focus barcode</span>
+        </div>
+
+        <hr style="border:0;border-top:1px solid #24262d; margin:12px 0" />
+
+        <div class="muted">Sample barcodes in DB</div>
+        <div class="muted">
+          012345678905 (Milk) • 036000291452 (Bread) • 04963406 (Bananas)
+        </div>
+      </div>
+
+      <div>
+        <label>Receipt</label><br/>
+        <textarea id="receipt" readonly></textarea>
+      </div>
+    </div>
+
+    <h2>Items Database (editable)</h2>
+    <div class="pad">
+      <div class="muted">Edit your items here (JSON). Tap “Save Items DB”. Stored locally in your browser.</div>
+      <textarea id="dbEditor"></textarea>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(() => {
+  // ---- Helpers ----
+  const $ = (id) => document.getElementById(id);
+  const money = (n) => {
+    const x = Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+    return "$" + x.toFixed(2);
+  };
+  const nowStamp = () => {
+    const d = new Date();
+    const pad = (v) => String(v).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  };
+
+  // ---- Default item DB ----
+  const defaultDb = {
+    "012345678905": { name: "Milk 2L", price: 4.79 },
+    "036000291452": { name: "Bread Loaf", price: 3.29 },
+    "04963406":     { name: "Bananas (per lb)", price: 0.79 },
+    "0001":         { name: "PLU Apples (per lb)", price: 1.49 },
+    "0002":         { name: "PLU Tomatoes (per lb)", price: 2.19 }
+  };
+
+  // ---- State ----
+  let db = loadDb();
+  let cart = [];
+
+  function loadDb() {
+    try {
+      const raw = localStorage.getItem("pos_items_db_v1");
+      if (!raw) return structuredClone(defaultDb);
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : structuredClone(defaultDb);
+    } catch {
+      return structuredClone(defaultDb);
+    }
+  }
+
+  function saveDb() {
+    localStorage.setItem("pos_items_db_v1", JSON.stringify(db, null, 2));
+  }
+
+  // ---- UI init ----
+  $("dbEditor").value = JSON.stringify(db, null, 2);
+  $("barcode").focus();
+
+  // ---- Core logic ----
+  function addItemByCode(code, qty) {
+    code = (code || "").trim();
+    qty = Math.max(1, Math.floor(Number(qty || 1)));
+
+    if (!code) return;
+
+    let item = db[code];
+
+    if (!item) {
+      const mode = $("priceMode").value;
+      if (mode === "reject") {
+        alert("Unknown barcode/PLU: " + code);
+        return;
+      }
+
+      const name = prompt("Unknown code. Enter item name:", "New Item");
+      if (!name) return;
+
+      const priceStr = prompt("Enter price (per unit):", "1.00");
+      const price = Number(priceStr);
+      if (!Number.isFinite(price) || price < 0) {
+        alert("Invalid price.");
+        return;
+      }
+
+      item = { name: name.trim(), price: Math.round(price * 100) / 100 };
+      db[code] = item;
+      $("dbEditor").value = JSON.stringify(db, null, 2);
+      saveDb();
+    }
+
+    // Merge lines if same code & same unit price
+    const existing = cart.find(x => x.code === code && x.price === item.price);
+    if (existing) {
+      existing.qty += qty;
+    } else {
+      cart.push({ code, name: item.name, qty, price: item.price });
+    }
+
+    render();
+    $("barcode").value = "";
+    $("qty").value = 1;
+    $("barcode").focus();
+  }
+
+  function calcTotals() {
+    const subtotal = cart.reduce((s, x) => s + x.qty * x.price, 0);
+    const taxEnabled = $("taxEnabled").checked;
+    const taxRate = Number($("taxRate").value || 0);
+    const tax = taxEnabled ? subtotal * taxRate : 0;
+    const total = subtotal + tax;
+    return { subtotal, tax, total };
+  }
+
+  function makeReceipt(changeDue = null, paid = null) {
+    const { subtotal, tax, total } = calcTotals();
+    const lines = [];
+    lines.push("SUPERMARKET POS SIM (OFFLINE)");
+    lines.push("Time: " + nowStamp());
+    lines.push("--------------------------------");
+    cart.forEach(x => {
+      const lineTotal = x.qty * x.price;
+      lines.push(`${x.name}`);
+      lines.push(`  ${x.code}  x${x.qty} @ ${money(x.price)}  = ${money(lineTotal)}`);
+    });
+    lines.push("--------------------------------");
+    lines.push(`Subtotal: ${money(subtotal)}`);
+    lines.push(`Tax:      ${money(tax)}`);
+    lines.push(`TOTAL:    ${money(total)}`);
+    if (paid != null) lines.push(`Paid:     ${money(paid)}`);
+    if (changeDue != null) lines.push(`Change:   ${money(changeDue)}`);
+    lines.push("--------------------------------");
+    lines.push("Thank you!");
+    return lines.join("\n");
+  }
+
+  function render() {
+    const tbody = $("cartTable").querySelector("tbody");
+    tbody.innerHTML = "";
+
+    cart.forEach((x, idx) => {
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.title = "Tap to edit/remove";
+      tr.innerHTML = `
+        <td>${escapeHtml(x.name)}</td>
+        <td>${escapeHtml(x.code)}</td>
+        <td class="num">${x.qty}</td>
+        <td class="num">${money(x.price)}</td>
+        <td class="num">${money(x.qty * x.price)}</td>
+      `;
+      tr.addEventListener("click", () => editLine(idx));
+      tbody.appendChild(tr);
+    });
+
+    const { subtotal, tax, total } = calcTotals();
+    $("subtotal").textContent = money(subtotal);
+    $("tax").textContent = money(tax);
+    $("total").textContent = money(total);
+
+    $("receipt").value = makeReceipt();
+    $("change").textContent = money(0);
+  }
+
+  function editLine(index) {
+    const line = cart[index];
+    if (!line) return;
+
+    const action = prompt(
+      `Edit line:\n${line.name} (${line.code})\n\nType:\n- qty=NUMBER\n- price=NUMBER\n- remove\n\nExample: qty=3`,
+      `qty=${line.qty}`
+    );
+    if (!action) return;
+
+    const a = action.trim().toLowerCase();
+    if (a === "remove") {
+      cart.splice(index, 1);
+      render();
+      return;
+    }
+    if (a.startsWith("qty=")) {
+      const n = Math.floor(Number(a.slice(4)));
+      if (Number.isFinite(n) && n > 0) line.qty = n;
+      render();
+      return;
+    }
+    if (a.startsWith("price=")) {
+      const p = Number(a.slice(6));
+      if (Number.isFinite(p) && p >= 0) line.price = Math.round(p * 100) / 100;
+      render();
+      return;
+    }
+    alert("Unknown command.");
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[m]));
+  }
+
+  // ---- Events ----
+  $("btnAdd").addEventListener("click", () => addItemByCode($("barcode").value, $("qty").value));
+  $("barcode").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") addItemByCode($("barcode").value, $("qty").value);
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey && (e.key.toLowerCase() === "k")) {
+      e.preventDefault();
+      $("barcode").focus();
+    }
+  });
+
+  $("taxEnabled").addEventListener("change", render);
+  $("taxRate").addEventListener("change", render);
+
+  $("btnVoid").addEventListener("click", () => {
+    if (!cart.length) return;
+    if (confirm("Void current sale?")) {
+      cart = [];
+      $("tendered").value = "";
+      render();
+    }
+  });
+
+  $("btnSaveDb").addEventListener("click", () => {
+    try {
+      const parsed = JSON.parse($("dbEditor").value);
+      if (!parsed || typeof parsed !== "object") throw new Error("DB must be an object.");
+      // Light validation
+      for (const [code, it] of Object.entries(parsed)) {
+        if (!it || typeof it !== "object") throw new Error(`Invalid item at ${code}`);
+        if (typeof it.name !== "string") throw new Error(`Missing name at ${code}`);
+        if (!Number.isFinite(Number(it.price))) throw new Error(`Invalid price at ${code}`);
+        it.price = Math.round(Number(it.price) * 100) / 100;
+      }
+      db = parsed;
+      saveDb();
+      alert("Items DB saved locally.");
+    } catch (err) {
+      alert("DB save failed: " + err.message);
+    }
+  });
+
+  $("btnPay").addEventListener("click", () => {
+    const { total } = calcTotals();
+    const paid = Number($("tendered").value);
+    if (!Number.isFinite(paid) || paid < 0) { alert("Enter a valid tendered amount."); return; }
+    const change = Math.round((paid - total) * 100) / 100;
+    $("change").textContent = money(change);
+    $("receipt").value = makeReceipt(change, paid);
+  });
+
+  $("btnPrint").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText($("receipt").value);
+      alert("Receipt copied to clipboard.");
+    } catch {
+      // Fallback: select text
+      $("receipt").focus();
+      $("receipt").select();
+      alert("Clipboard blocked. Receipt selected — copy manually.");
+    }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
